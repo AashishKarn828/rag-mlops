@@ -58,7 +58,10 @@ jobs:
             docker-compose down || true
             
             echo "🧹 Cleaning up..."
-            docker system prune -f
+            docker-compose down
+            docker-compose build --no-cache
+            docker-compose up -d
+
             
             echo "🚀 Starting services..."
             DOCKER_BUILDKIT=0 COMPOSE_DOCKER_CLI_BUILD=0 docker-compose up -d --build

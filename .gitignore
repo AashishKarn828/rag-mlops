@@ -25,7 +25,8 @@ pip-delete-this-directory.txt
 .coverage
 htmlcov/
 
-# Virtual environments
+# Virtual environments.Python
+
 venv/
 ENV/
 env/

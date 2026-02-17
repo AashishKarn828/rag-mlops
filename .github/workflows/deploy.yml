@@ -41,8 +41,7 @@ jobs:
               echo "📥 Pulling latest code..."
               cd /opt/rag-app
               git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
-              git fetch origin
-              git reset --hard origin/main
+              git pull origin main
             fi
             
             cd /opt/rag-app/infrastructure
@@ -58,10 +57,7 @@ jobs:
             docker-compose down || true
             
             echo "🧹 Cleaning up..."
-            docker-compose down
-            docker-compose build --no-cache
-            docker-compose up -d
-
+            docker system prune -f
             
             echo "🚀 Starting services..."
             DOCKER_BUILDKIT=0 COMPOSE_DOCKER_CLI_BUILD=0 docker-compose up -d --build

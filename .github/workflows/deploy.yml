@@ -1,83 +1,83 @@
-# name: Deploy RAG Microservices
+name: Deploy to EC2
 
-# on:
-#   push:
-#     branches:
-#       - main
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
 
-# env:
-#   EC2_HOST: ${{ secrets.EC2_HOST }}
-#   EC2_USER: ${{ secrets.EC2_USER }}
-#   SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+env:
+  EC2_HOST: ${{ secrets.EC2_HOST }}
+  EC2_USER: ec2-user
 
-# jobs:
-#   deploy:
-#     runs-on: ubuntu-latest
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
     
-#     steps:
-#       - name: Checkout code
-#         uses: actions/checkout@v4
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
       
-#       - name: Configure SSH
-#         run: |
-#           mkdir -p ~/.ssh
-#           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-#           chmod 600 ~/.ssh/id_rsa
-#           ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
       
-#       - name: Deploy to EC2
-#         run: |
-#           ssh -i ~/.ssh/id_rsa ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'ENDSSH'
-#             set -e
+      - name: Deploy to EC2
+        run: |
+          ssh -i ~/.ssh/id_rsa ec2-user@${{ secrets.EC2_HOST }} "bash -s" << EOF
+            set -e
             
-#             # Navigate to application directory
-#             cd /opt/rag-microservices
+            # Setup app directory if it doesn't exist
+            if [ ! -d "/opt/rag-app/.git" ]; then
+              echo "🔧 First-time setup..."
+              sudo mkdir -p /opt/rag-app
+              sudo chown ec2-user:ec2-user /opt/rag-app
+              cd /opt/rag-app
+              git clone https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git .
+            else
+              echo "📥 Pulling latest code..."
+              cd /opt/rag-app
+              git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+              git pull origin main
+            fi
             
-#             # Pull latest changes
-#             echo "Pulling latest code..."
-#             git pull origin main
+            cd /opt/rag-app/infrastructure
             
-#             # Navigate to infrastructure directory
-#             cd infrastructure
+            # Install docker-compose if not present
+            if ! command -v docker-compose &> /dev/null; then
+              echo "📦 Installing docker-compose..."
+              sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+              sudo chmod +x /usr/local/bin/docker-compose
+            fi
             
-#             # Stop existing containers
-#             echo "Stopping existing containers..."
-#             docker-compose down
+            echo "🛑 Stopping containers..."
+            docker-compose down || true
             
-#             # Remove old images to free space (optional)
-#             echo "Cleaning up old images..."
-#             docker system prune -f
+            echo "🧹 Cleaning up..."
+            docker system prune -f
             
-#             # Build and start services
-#             echo "Starting services..."
-#             docker-compose up -d --build
+            echo "🚀 Starting services..."
+            DOCKER_BUILDKIT=0 COMPOSE_DOCKER_CLI_BUILD=0 docker-compose up -d --build
             
-#             # Wait for services to be healthy
-#             echo "Waiting for services to start..."
-#             sleep 30
+            echo "⏳ Waiting for services..."
+            sleep 60
             
-#             # Check service status
-#             echo "Checking service status..."
-#             docker-compose ps
-            
-#             # Check logs for any immediate errors
-#             echo "Checking logs..."
-#             docker-compose logs --tail=50
-            
-#             echo "Deployment completed successfully!"
-#           ENDSSH
+            echo "✅ Deployment complete!"
+            docker-compose ps
+          EOF
       
-#       - name: Verify Deployment
-#         run: |
-#           ssh -i ~/.ssh/id_rsa ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'ENDSSH'
-#             # Test backend health endpoint
-#             echo "Testing backend health..."
-#             curl -f http://localhost:8000/health || exit 1
-            
-#             echo "All health checks passed!"
-#           ENDSSH
+      - name: Verify Deployment
+        run: |
+          ssh -i ~/.ssh/id_rsa ec2-user@${{ secrets.EC2_HOST }} "bash -s" << EOF
+            echo "🔍 Checking services..."
+            curl -f http://localhost:8000/health || echo "⚠️ Backend health check failed"
+            curl -f http://localhost:8501 || echo "⚠️ Frontend check failed"
+            echo "✅ Verification complete!"
+          EOF
       
-#       - name: Cleanup
-#         if: always()
-#         run: |
-#           rm -f ~/.ssh/id_rsa
+      - name: Cleanup
+        if: always()
+        run: rm -f ~/.ssh/id_rsa

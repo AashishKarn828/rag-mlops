@@ -13,78 +13,71 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
+    
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Setup SSH Key
+      
+      - name: Configure SSH
         run: |
           mkdir -p ~/.ssh
-          # Preserve line breaks in private key
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" | tr -d '\r' > ~/.ssh/id_rsa
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+      
       - name: Deploy to EC2
         run: |
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ec2-user@${{ secrets.EC2_HOST }} "bash -s" << 'EOF'
-set -e
-
-APP_DIR=/opt/rag-app
-
-# Ensure app directory exists
-if [ ! -d "$APP_DIR/.git" ]; then
-  echo "🔧 First-time setup..."
-  sudo mkdir -p $APP_DIR
-  sudo chown ec2-user:ec2-user $APP_DIR
-  cd $APP_DIR
-  git clone https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git .
-else
-  echo "📥 Pulling latest code..."
-  cd $APP_DIR
-  git fetch origin
-  git reset --hard origin/main
-fi
-
-cd $APP_DIR/infrastructure
-
-# Install docker-compose if missing
-if ! command -v docker-compose &> /dev/null; then
-  echo "📦 Installing docker-compose..."
-  sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-  sudo chmod +x /usr/local/bin/docker-compose
-fi
-
-echo "🛑 Stopping containers..."
-docker-compose down || true
-
-echo "🧹 Cleaning up Docker..."
-docker system prune -af
-docker builder prune -af
-
-echo "🚀 Building and starting services..."
-docker-compose build --no-cache
-docker-compose up -d
-
-echo "⏳ Waiting for services to stabilize..."
-sleep 60
-
-echo "✅ Deployment complete!"
-docker-compose ps
-EOF
-
+          ssh -i ~/.ssh/id_rsa ec2-user@${{ secrets.EC2_HOST }} "bash -s" << EOF
+            set -e
+            
+            # Setup app directory if it doesn't exist
+            if [ ! -d "/opt/rag-app/.git" ]; then
+              echo "🔧 First-time setup..."
+              sudo mkdir -p /opt/rag-app
+              sudo chown ec2-user:ec2-user /opt/rag-app
+              cd /opt/rag-app
+              git clone https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git .
+            else
+              echo "📥 Pulling latest code..."
+              cd /opt/rag-app
+              git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+              git pull origin main
+            fi
+            
+            cd /opt/rag-app/infrastructure
+            
+            # Install docker-compose if not present
+            if ! command -v docker-compose &> /dev/null; then
+              echo "📦 Installing docker-compose..."
+              sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+              sudo chmod +x /usr/local/bin/docker-compose
+            fi
+            
+            echo "🛑 Stopping containers..."
+            docker-compose down || true
+            
+            echo "🧹 Cleaning up..."
+            docker system prune -f
+            
+            echo "🚀 Starting services..."
+            DOCKER_BUILDKIT=0 COMPOSE_DOCKER_CLI_BUILD=0 docker-compose up -d --build
+            
+            echo "⏳ Waiting for services..."
+            sleep 60
+            
+            echo "✅ Deployment complete!"
+            docker-compose ps
+          EOF
+      
       - name: Verify Deployment
         run: |
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ec2-user@${{ secrets.EC2_HOST }} "bash -s" << 'EOF'
-echo "🔍 Checking backend..."
-curl -f http://localhost:8000/health || echo "⚠️ Backend health check failed"
-
-echo "🔍 Checking frontend..."
-curl -f http://localhost:8501 || echo "⚠️ Frontend check failed"
-
-echo "✅ Verification complete!"
-EOF
-
+          ssh -i ~/.ssh/id_rsa ec2-user@${{ secrets.EC2_HOST }} "bash -s" << EOF
+            echo "🔍 Checking services..."
+            curl -f http://localhost:8000/health || echo "⚠️ Backend health check failed"
+            curl -f http://localhost:8501 || echo "⚠️ Frontend check failed"
+            echo "✅ Verification complete!"
+          EOF
+      
       - name: Cleanup
         if: always()
         run: rm -f ~/.ssh/id_rsa

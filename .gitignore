@@ -58,8 +58,6 @@ models/
 data/
 uploads/
 *.pdf
-*.txt
-
 # Secrets
 *.pem
 *.key

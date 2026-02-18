@@ -243,7 +243,7 @@ if prompt := st.chat_input("Ask a question about your documents..."):
                         "top_k": top_k,
                         "session_id": st.session_state.session_id,  # Pass session_id
                     },
-                    timeout=60,
+                    timeout=300,
                 )
 
                 if response.status_code == 200:

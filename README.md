@@ -53,6 +53,7 @@ Upload any **PDF or TXT document**, ask questions in plain English, and get AI-g
 ## 🏗️ Architecture Diagram
 
 ```mermaid
+
 graph TB
     subgraph Client["🖥️ Client Layer"]
         Streamlit["Streamlit Frontend<br/>Port 8501<br/>- Chat UI<br/>- Document Upload<br/>- Conversation Memory"]

@@ -50,6 +50,80 @@ Upload any **PDF or TXT document**, ask questions in plain English, and get AI-g
 
 ---
 
+## 🏗️ Architecture Diagram
+
+```mermaid
+graph TB
+    subgraph Client["🖥️ Client Layer"]
+        Streamlit["Streamlit Frontend<br/>Port 8501<br/>- Chat UI<br/>- Document Upload<br/>- Conversation Memory"]
+    end
+
+    subgraph Backend["🔧 Backend Layer - FastAPI<br/>Port 8000"]
+        Router["API Routes<br/>- /health<br/>- /index<br/>- /chat"]
+        Config["Configuration<br/>Settings & Models"]
+        ErrorHandler["Error Handling<br/>CORS Middleware"]
+    end
+
+    subgraph Services["⚙️ Service Layer"]
+        DocService["Document Service<br/>- PDF/TXT Extraction<br/>- Text Chunking<br/>- File Validation"]
+        EmbedService["Embedding Service<br/>BAAI/bge-small-en-v1.5<br/>- Text → Vectors<br/>- Mean Pooling<br/>- Normalization"]
+        LLMService["LLM Service<br/>Qwen2.5-0.5B-Instruct<br/>- Generate Responses<br/>- Prompt Building<br/>- Context Awareness"]
+        VectorDBService["VectorDB Service<br/>Qdrant Client<br/>- Store Embeddings<br/>- Semantic Search<br/>- Similarity Search"]
+        MemoryService["Memory Service<br/>- Session Management<br/>- Conversation History<br/>- Context Building"]
+    end
+
+    subgraph Models["🤖 AI Models"]
+        BGEModel["BGE Model<br/>BAAI/bge-small-en-v1.5<br/>384-dim embeddings"]
+        QwenModel["Qwen Model<br/>Qwen2.5-0.5B-Instruct<br/>Language Generation"]
+    end
+
+    subgraph Database["💾 Data Layer"]
+        Qdrant["Qdrant Vector Database<br/>Port 6333<br/>- Collection: 'documents'<br/>- Cosine Distance<br/>- Persistent Storage"]
+    end
+
+    %% Client to Backend
+    Streamlit -->|HTTP/REST| Router
+    Router -->|Validates| Config
+    Router -->|Handles| ErrorHandler
+
+    %% Document Upload Flow
+    Streamlit -->|File Upload| Router
+    Router -->|Process| DocService
+    DocService -->|Extract & Chunk| EmbedService
+    EmbedService -->|Generate| BGEModel
+    EmbedService -->|Vectors| VectorDBService
+    VectorDBService -->|Store Vectors<br/>+ Metadata| Qdrant
+
+    %% Chat Flow
+    Streamlit -->|Query + SessionID| Router
+    Router -->|Query Text| EmbedService
+    EmbedService -->|Embed Query| BGEModel
+    EmbedService -->|Query Vector| VectorDBService
+    VectorDBService -->|Search Qdrant| Qdrant
+    Router -->|Retrieved Context| LLMService
+    Router -->|Retrieve History| MemoryService
+    MemoryService -->|Conversation Context| LLMService
+    LLMService -->|Load| QwenModel
+    LLMService -->|Generate Response| Router
+    Router -->|Response + Session| MemoryService
+    Router -->|Answer + Sources| Streamlit
+
+    %% Styling
+    classDef client fill:#e1f5ff,stroke:#01579b,stroke-width:2px,color:#000
+    classDef backend fill:#f3e5f5,stroke:#4a148c,stroke-width:2px,color:#000
+    classDef service fill:#fff3e0,stroke:#e65100,stroke-width:2px,color:#000
+    classDef model fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px,color:#000
+    classDef db fill:#fce4ec,stroke:#880e4f,stroke-width:2px,color:#000
+
+    class Client client
+    class Backend,Router,Config,ErrorHandler backend
+    class Services,DocService,EmbedService,LLMService,VectorDBService,MemoryService service
+    class Models,BGEModel,QwenModel model
+    class Database,Qdrant db
+```
+
+---
+
 ## 📁 Project Structure
 
 ```
